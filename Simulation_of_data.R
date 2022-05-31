@@ -153,46 +153,8 @@ sd_sdqL1 <- 3.0
 
   ##########MIssing data generation######################
   
-
-  D <- D %>% group_by(school) %>% 
-    mutate(L3_RE_r_dep = rnorm(1,0,0.01),L3_RE_r_NAPLAN = rnorm(1,0,0.4) )
-  D <- D %>% group_by(c_id) %>% 
-    mutate(L2_RE_r_dep = rnorm(1,0,0.05),L2_RE_r_NAPLAN = rnorm(1,0,2.0))
   
-  #missing data generation in prev_dep
-  D$r_prev_dep <- as.numeric(runif(3600,0,1)<inv.logit(-8.0+0.72*D$c_age+0.16*D$c_sex+(-0.17)*D$NAPLAN_w1+
-                                   (-0.11)*D$wave+(-0.39)*D$c_ses_2+(0.27)*D$c_ses_3+(0.19)*D$c_ses_4+
-                                   (-0.03)*D$c_ses_5+(-0.13)*D$NAPLAN+(0.04)*D$prev_sdq+D$L3_RE_r_dep+D$L2_RE_r_dep))
-  
-  D$r_prev_dep <- as.factor(D$r_prev_dep)
-
-  #missing data generation in NAPLAN
-  D$r_NAPLAN <- as.numeric(runif(3600,0,1)<inv.logit(-22+1.77*D$c_age+0.01*D$c_sex+(-0.70)*D$NAPLAN_w1+
-                                                         (0.7)*D$wave+(-4.9)*D$c_ses_2+(-1.9)*D$c_ses_3+(2.19)*D$c_ses_4+
-                                                         (-2.35)*D$c_ses_5+(-0.25)*(as.numeric(D$prev_dep)-1)+(0.11)*D$prev_sdq+
-                                                       D$L3_RE_r_NAPLAN+D$L2_RE_r_NAPLAN))
-
-  D$r_NAPLAN <- as.factor(D$r_NAPLAN)
-  
-  
-  summary(D)
-  
-  #assign NA values 
-  D$prev_dep <- ifelse(D$r_prev_dep==1,NA,D$prev_dep)
-  D$NAPLAN <- ifelse(D$r_NAPLAN==1,NA,D$NAPLAN)
-  
-  D <- D %>% select(!contains("L3")& !contains("L2") & !contains("c_ses_"))
-  
-  D$r_prev_dep=NULL
-  D$r_NAPLAN=NULL
-
-  
-  #check the drop out and intermittent missingness
-  drop_out <- aggregate(NAPLAN ~ c_id, data=D, function(x) {sum(is.na(x))}, na.action = NULL)
-  
-  table(drop_out$NAPLAN)
-  D <- as.data.frame(D)
-  
+  #reshape to wide
   D_wide <- reshape(D,v.names=c("NAPLAN","prev_sdq","prev_dep"),timevar = "wave",idvar="c_id",direction= "wide")
   
   #Missing values in NAPLAN- 15% of NAPLAN at wave 1 data missing 
@@ -203,23 +165,66 @@ sd_sdqL1 <- 3.0
   D_wide$r_SES <- as.numeric(runif(1200,0,1)<inv.logit(-1.5+0.03*D_wide$c_age+0.01*D_wide$c_sex))
   
   
+ 
+  #reshape to long
+  D <- reshape(D_wide,varying =list(c("prev_dep.3","prev_dep.5","prev_dep.7"),
+                                    c("NAPLAN.3","NAPLAN.5","NAPLAN.7"),
+                                    c("prev_sdq.3", "prev_sdq.5", "prev_sdq.7")),idvar="c_id", 
+               v.names=c("prev_dep","NAPLAN","prev_sdq"), times=c(3,5,7),
+               direction= "long")
+  
+  
+
+  D <- D %>% group_by(school) %>% 
+    mutate(L3_RE_r_dep = rnorm(1,0,0.01),L3_RE_r_NAPLAN = rnorm(1,0,0.4) )
+  D <- D %>% group_by(c_id) %>% 
+    mutate(L2_RE_r_dep = rnorm(1,0,0.05),L2_RE_r_NAPLAN = rnorm(1,0,2.0))
+  
+  #missing data generation in prev_dep
+  D$r_prev_dep <- as.numeric(runif(3600,0,1)<inv.logit(-8.0+0.72*D$c_age+0.16*D$c_sex+(-0.17)*D$NAPLAN_w1+
+                                   (-0.11)*D$time+(-0.39)*D$c_ses_2+(0.27)*D$c_ses_3+(0.19)*D$c_ses_4+
+                                   (-0.03)*D$c_ses_5+(-0.13)*D$NAPLAN+(0.04)*D$prev_sdq+D$L3_RE_r_dep+D$L2_RE_r_dep))
+  
+  D$r_prev_dep <- as.factor(D$r_prev_dep)
+
+  #missing data generation in NAPLAN
+  D$r_NAPLAN <- as.numeric(runif(3600,0,1)<inv.logit(-23+1.77*D$c_age+0.01*D$c_sex+(-0.70)*D$NAPLAN_w1+
+                                                         (0.7)*D$time+(-4.9)*D$c_ses_2+(-1.9)*D$c_ses_3+(2.19)*D$c_ses_4+
+                                                         (-2.35)*D$c_ses_5+(-0.25)*(as.numeric(D$prev_dep)-1)+(0.11)*D$prev_sdq+
+                                                       D$L3_RE_r_NAPLAN+D$L2_RE_r_NAPLAN))
+
+  D$r_NAPLAN <- as.factor(D$r_NAPLAN)
+  
+  
+  summary(D)
+  
+  #check the drop out and intermittent missingness
+  drop_out <- aggregate(r_NAPLAN ~ c_id, data=D, function(x) {sum(x==1)}, na.action = NULL)
+  
+  table(drop_out$r_NAPLAN)
+  
+  D <- D %>% select(!contains("L3")& !contains("L2") & !contains("c_ses_"))
+  
+  D <- as.data.frame(D)
+ 
+  D$prev_dep <- ifelse(D$r_prev_dep==1,NA,D$prev_dep)
+  D$NAPLAN <- ifelse(D$r_NAPLAN==1,NA,D$NAPLAN)
+  
+  D$r_prev_dep=NULL
+  D$r_NAPLAN=NULL
+  
+  
   #assign NA values 
-  D_wide$c_ses <- ifelse(D_wide$r_SES==1,NA,D_wide$c_ses)
-  D_wide$NAPLAN_w1 <- ifelse(D_wide$r_NAPLANW1==1,NA,D_wide$NAPLAN_w1)
+  D$c_ses <- ifelse(D$r_SES==1,NA,D$c_ses)
+  D$NAPLAN_w1 <- ifelse(D$r_NAPLANW1==1,NA,D$NAPLAN_w1)
+  
   
   #remove unwanted variables
-  D_wide$r_NAPLANW1=NULL
-  D_wide$r_SES=NULL
-  
- #reshape to long
-  D <- reshape(D_wide,varying =list(c("prev_dep.3","prev_dep.5","prev_dep.7"),
-                                                c("NAPLAN.3","NAPLAN.5","NAPLAN.7"),
-                                                c("prev_sdq.3", "prev_sdq.5", "prev_sdq.7")),idvar="c_id", 
-                        v.names=c("prev_dep","NAPLAN","prev_sdq"), times=c(3,5,7),direction= "long")
+  D$r_NAPLANW1=NULL
+  D$r_SES=NULL
   
   
   D <- D[order(D$c_id),]
-  
   
   #Save the dataset
   write.csv(D, "CATS_dataL.csv")
